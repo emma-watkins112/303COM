@@ -1,0 +1,142 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Max72xxPanel.h>
+
+// Wireless Point information
+#define SSID "DO_NOT_CONNECT"         
+#define PASS "12345678"                    
+// A form for user to enter a message that then displays on the LED boards
+
+String form =
+  "<p>"
+  "<center>"
+  "<h1> Welcome to the Evil Twin Checker, please follow the instructions below </h1>"
+  "<form action='msg'><p>Enter your message <input type='text' name='msg' size=100 autofocus> <input type='submit' value='Submit'></form>"
+  "</center>";
+  "<left>"
+  "<p> 1. Enter a message in the text box above </p>"
+  "<p> 2. Check the LED screens to see if your message has appeared. If it has, you are connected to the correct point. </p>"
+  "<p> 3. If you cannot see the message, please connect to an alternative point and try again. </p>"
+
+// Webserver
+ESP8266WebServer server(80);                             
+long period;
+int offset=1,refresh=0;
+int CSpin = 0; 
+int HorizontalDisplays = 3;
+int VerticalDisplays = 1;
+String decodedMsg;
+Max72xxPanel matrix = Max72xxPanel(CSpin, HorizontalDisplays, VerticalDisplays);
+
+String tape = "Arduino";
+int wait = 250; // Wait for 0.25 seconds
+
+int space = 2; // Space between letters/ numbers
+int width = 5 + space; // The font is 5 pixels wide
+
+/* This handles the messages coming from the webpage. It restores special characters that are not formally recognised. 
+  It then structures the string so the LED screens can print the message */
+void handle_msg() {
+                        
+  matrix.fillScreen(LOW);
+  server.send(200, "text/html", form);    // This resends the form so a user can enter multiple messages 
+  refresh=1;
+  //Message can be displayed
+  String msg = server.arg("msg");
+  Serial.println(msg);
+  decodedMsg = msg;
+  // This is where the special characters are restored
+  decodedMsg.replace("+", " ");      
+  decodedMsg.replace("%21", "!");  
+  decodedMsg.replace("%22", "");  
+  decodedMsg.replace("%23", "#");
+  decodedMsg.replace("%24", "$");
+  decodedMsg.replace("%25", "%");  
+  decodedMsg.replace("%26", "&");
+  decodedMsg.replace("%27", "'");  
+  decodedMsg.replace("%28", "(");
+  decodedMsg.replace("%29", ")");
+  decodedMsg.replace("%2A", "*");
+  decodedMsg.replace("%2B", "+");  
+  decodedMsg.replace("%2C", ",");  
+  decodedMsg.replace("%2F", "/");   
+  decodedMsg.replace("%3A", ":");    
+  decodedMsg.replace("%3B", ";");  
+  decodedMsg.replace("%3C", "<");  
+  decodedMsg.replace("%3D", "=");  
+  decodedMsg.replace("%3E", ">");
+  decodedMsg.replace("%3F", "?");  
+  decodedMsg.replace("%40", "@"); 
+}
+
+void setup(void) {
+// Sets the brightness of the LED boards
+matrix.setIntensity(10); 
+
+  // Set the speed of monitor (Baud rate)
+  Serial.begin(115200); 
+
+  // Connect to wireless network                               
+  WiFi.begin(SSID, PASS); 
+  // While you are connecting, it prints dots to the serial monitor to show loading
+  while (WiFi.status() != WL_CONNECTED) { 
+    delay(500);
+    Serial.print(".");
+  }
+  // Endpoints to which message is sent
+  server.on("/", []() {
+    server.send(200, "text/html", form);
+  });
+  server.on("/msg", handle_msg;
+  // Server starts
+  server.begin();                               
+
+// Prints message to the monitor, used for testing purposes. 
+  Serial.print("SSID : ");                        
+  Serial.println(SSID);                                        
+ 
+  char message[16];
+  sprintf(message, "%3d.%3d.%1d.%3d", WiFi.localIP()[0], WiFi.localIP()[1], WiFi.localIP()[2], WiFi.localIP()[3]);
+  Serial.println();
+  Serial.println(message);
+  decodedMsg = message;
+  Serial.println("Connected");
+
+// Local IP is printed, again, used for testing
+  Serial.println(WiFi.localIP());                
+  Serial.print(analogRead(A0));
+  
+}
+
+
+void loop(void) {
+
+  for ( int i = 0 ; i < width * decodedMsg.length() + matrix.width() - 1 - space; i++ ) {
+    // Incoming messages are checked for routinely as multiple can be sent through
+    server.handleClient();                        
+    if (refresh==1) i=0;
+    refresh=0;
+    matrix.fillScreen(LOW);
+
+    int letter = i / width;
+    // Organising how the text appears on screen
+    int x = (matrix.width() - 1) - i % width;
+    int y = (matrix.height() - 8) / 2; 
+ 
+    while ( x + width - space >= 0 && letter >= 0 ) {
+      if ( letter < decodedMsg.length() ) {
+        matrix.drawChar(x, y, decodedMsg[letter], HIGH, LOW, 1);
+      }
+
+      letter--;
+      x -= width;
+    }
+
+// Message is sent to LED boards
+    matrix.write(); 
+
+    delay(wait);
+  }
+}
